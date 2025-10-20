@@ -11,59 +11,76 @@ const Index = () => {
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-background">
-      {/* ASCII Background - Aggressively Scaled */}
-      <div className="absolute inset-0 w-full h-full">
+      {/* ASCII Background */}
+      <div className="absolute inset-0 w-full h-full opacity-30">
         <ASCIIText
-          text="pxl8.studio"
+          text="PIXEL"
           enableWaves={true}
-          asciiFontSize={4}
-          textFontSize={600}
-          planeBaseHeight={24}
+          asciiFontSize={3}
+          textFontSize={800}
+          planeBaseHeight={28}
         />
       </div>
 
-      {/* Content Overlay */}
-      <div className="relative z-10 flex flex-col items-center justify-center h-full px-6">
-        <div className={`flex flex-col items-center space-y-10 transition-all duration-1000 ${
-          isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
-        }`}>
-          {/* Logo */}
-          <div className="animate-float drop-shadow-2xl">
-            <img 
-              src={logo} 
-              alt="pxl8.studio" 
-              className="w-72 md:w-96 lg:w-[500px] h-auto"
-            />
-          </div>
+      {/* Noise Texture Overlay */}
+      <div className="absolute inset-0 opacity-[0.03] mix-blend-overlay pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIj48ZmlsdGVyIGlkPSJhIiB4PSIwIiB5PSIwIj48ZmVUdXJidWxlbmNlIGJhc2VGcmVxdWVuY3k9Ii43NSIgc3RpdGNoVGlsZXM9InN0aXRjaCIgdHlwZT0iZnJhY3RhbE5vaXNlIi8+PGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPjwvZmlsdGVyPjxwYXRoIGQ9Ik0wIDBoMzAwdjMwMEgweiIgZmlsdGVyPSJ1cmwoI2EpIiBvcGFjaXR5PSIuMDUiLz48L3N2Zz4=')]" />
 
-          {/* Tagline */}
-          <div className="text-center space-y-5 max-w-3xl backdrop-blur-sm bg-background/5 p-8 rounded-2xl border border-foreground/5">
-            <h1 className="text-2xl md:text-4xl lg:text-5xl font-extralight text-foreground tracking-wider uppercase">
-              Creative Design Studio
+      {/* Content */}
+      <div className="relative z-10 flex flex-col h-full">
+        {/* Header */}
+        <header className="pt-8 px-8 md:px-16">
+          <nav className={`transition-all duration-700 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
+            <div className="flex items-center justify-between">
+              <img 
+                src={logo} 
+                alt="pxl8.studio" 
+                className="h-8 md:h-10 w-auto"
+              />
+              <button className="text-sm text-foreground/60 hover:text-foreground transition-colors">
+                Contact
+              </button>
+            </div>
+          </nav>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-1 flex items-center justify-center px-8">
+          <div className={`max-w-4xl transition-all duration-1000 delay-200 ${
+            isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+          }`}>
+            <h1 className="text-5xl md:text-7xl lg:text-8xl font-light text-foreground mb-6 tracking-tight">
+              Design<br />
+              Studio
             </h1>
-            <div className="h-px w-24 mx-auto bg-gradient-primary" />
-            <p className="text-base md:text-lg lg:text-xl text-muted-foreground font-light tracking-wide">
-              Crafting pixel-perfect digital experiences
+            <p className="text-lg md:text-xl text-foreground/50 max-w-md font-light leading-relaxed">
+              We craft exceptional digital experiences through bold creativity and precision.
             </p>
+            
+            <div className="mt-12 flex gap-4">
+              <button className="group relative px-8 py-3 overflow-hidden rounded-sm">
+                <div className="absolute inset-0 bg-foreground transition-transform group-hover:scale-105" />
+                <span className="relative text-background text-sm font-medium">View Projects</span>
+              </button>
+              <button className="px-8 py-3 text-sm font-medium text-foreground/60 hover:text-foreground transition-colors">
+                Learn More →
+              </button>
+            </div>
           </div>
+        </main>
 
-          {/* CTA */}
-          <div className="flex flex-col sm:flex-row gap-4 mt-4">
-            <button className="px-10 py-4 bg-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 hover:scale-105 transition-all shadow-glow uppercase tracking-wide text-sm">
-              View Work
-            </button>
-            <button className="px-10 py-4 bg-transparent border-2 border-foreground/20 text-foreground rounded-xl font-medium hover:border-foreground/40 hover:bg-foreground/5 transition-all uppercase tracking-wide text-sm">
-              Get in Touch
-            </button>
+        {/* Footer */}
+        <footer className={`pb-8 px-8 md:px-16 transition-all duration-700 delay-500 ${
+          isLoaded ? 'opacity-100' : 'opacity-0'
+        }`}>
+          <div className="flex items-center justify-between text-xs text-foreground/40">
+            <p>Based in the digital realm</p>
+            <p>2025</p>
           </div>
-        </div>
+        </footer>
       </div>
 
-      {/* Gradient Overlay for Depth */}
-      <div className="absolute inset-0 bg-gradient-to-b from-background/30 via-transparent to-background/50 pointer-events-none" />
-      
-      {/* Vignette Effect */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.4)_100%)] pointer-events-none" />
+      {/* Subtle vignette */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,transparent_0%,rgba(0,0,0,0.3)_100%)] pointer-events-none" />
     </div>
   );
 };

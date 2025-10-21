@@ -1,6 +1,6 @@
 // Component ported and enhanced from https://codepen.io/JuanFuentes/pen/eYEeoyE
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 
 const vertexShader = `
@@ -68,6 +68,14 @@ class AsciiFilter {
   rows: number;
   center: { x: number; y: number };
   mouse: { x: number; y: number };
+  isInitialized: boolean;
+  frameCount: number;
+  hasValidContent: boolean;
+  consecutiveValidFrames: number;
+  previousAsciiContent: string;
+  isWarmingUp: boolean;
+  warmupFrames: number;
+  onReadyCallback?: () => void;
 
   constructor(renderer: THREE.WebGLRenderer, { fontSize, fontFamily, charset, invert }: any = {}) {
     this.renderer = renderer;
@@ -106,32 +114,52 @@ class AsciiFilter {
     this.rows = 0;
     this.center = { x: 0, y: 0 };
     this.mouse = { x: 0, y: 0 };
+    this.isInitialized = false;
+    this.frameCount = 0;
+    this.hasValidContent = false;
+    this.consecutiveValidFrames = 0;
+    this.previousAsciiContent = '';
+    this.isWarmingUp = true;
+    this.warmupFrames = 0;
+    
+    // Start hidden, will fade in after warmup
+    this.domElement.style.opacity = '0';
+    this.domElement.style.transition = 'opacity 1.5s ease-in-out';
   }
 
   setSize(width: number, height: number) {
-    this.width = width;
-    this.height = height;
-    this.renderer.setSize(width, height);
+    // Ensure even dimensions to prevent half-pixel rendering issues
+    this.width = Math.floor(width);
+    this.height = Math.floor(height);
+    this.renderer.setSize(this.width, this.height);
     this.reset();
 
-    this.center = { x: width / 2, y: height / 2 };
+    this.center = { x: this.width / 2, y: this.height / 2 };
     this.mouse = { x: this.center.x, y: this.center.y };
   }
 
   reset() {
     this.context.font = `${this.fontSize}px ${this.fontFamily}`;
-    const charWidth = this.context.measureText('A').width;
+    
+    // For monospace fonts, character width should be consistent
+    // Use a fixed ratio for more predictable results
+    const charWidth = this.fontSize * 0.6; // Standard monospace ratio
 
-    this.cols = Math.floor(this.width / (this.fontSize * (charWidth / this.fontSize)));
+    // Calculate columns and rows with floor to match viewport exactly
+    this.cols = Math.floor(this.width / charWidth);
     this.rows = Math.floor(this.height / this.fontSize);
 
+    // Ensure canvas dimensions match exactly
     this.canvas.width = this.cols;
     this.canvas.height = this.rows;
+    
+    // Set precise pre element styling with proper monospace rendering
     this.pre.style.fontFamily = this.fontFamily;
     this.pre.style.fontSize = `${this.fontSize}px`;
     this.pre.style.margin = '0';
     this.pre.style.padding = '0';
     this.pre.style.lineHeight = '1em';
+    this.pre.style.letterSpacing = '0';
     this.pre.style.position = 'absolute';
     this.pre.style.left = '50%';
     this.pre.style.top = '50%';
@@ -139,20 +167,75 @@ class AsciiFilter {
     this.pre.style.zIndex = '9';
     this.pre.style.backgroundAttachment = 'fixed';
     this.pre.style.mixBlendMode = 'difference';
+    this.pre.style.whiteSpace = 'pre';
+    this.pre.style.overflow = 'hidden';
+    this.pre.style.fontFeatureSettings = '"kern" 0';
+    this.pre.style.textRendering = 'geometricPrecision';
   }
 
   render(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     this.renderer.render(scene, camera);
+    this.frameCount++;
 
     const w = this.canvas.width;
     const h = this.canvas.height;
-    this.context.clearRect(0, 0, w, h);
-    if (this.context && w && h) {
-      this.context.drawImage(this.renderer.domElement, 0, 0, w, h);
+    
+    // Ensure we have valid dimensions and context
+    if (!w || !h || !this.context || w <= 0 || h <= 0) return;
+    
+    // Check if the renderer's canvas has content and is properly sized
+    const rendererCanvas = this.renderer.domElement;
+    if (!rendererCanvas || rendererCanvas.width <= 0 || rendererCanvas.height <= 0) return;
+    
+    // Wait for stability - 5 frames to let WebGL initialize
+    if (this.frameCount < 5) {
+      return;
     }
-
-    this.asciify(this.context, w, h);
-    this.hue();
+    
+    this.context.clearRect(0, 0, w, h);
+    
+    try {
+      this.context.drawImage(rendererCanvas, 0, 0, w, h);
+      
+      // Check if we actually have meaningful content
+      const imgData = this.context.getImageData(0, 0, w, h);
+      const data = imgData.data;
+      
+      // More thorough content check - ensure we have enough non-transparent pixels
+      let nonTransparentPixels = 0;
+      const sampleSize = 100; // Sample every 100th pixel
+      
+      for (let i = 3; i < data.length; i += (sampleSize * 4)) {
+        if (data[i] > 0) {
+          nonTransparentPixels++;
+        }
+      }
+      
+      // Need at least some meaningful content
+      const hasContent = nonTransparentPixels > 10;
+      
+      if (hasContent) {
+        // Generate ASCII content
+        const asciiContent = this.asciify(this.context, w, h);
+        
+        if (asciiContent) {
+          this.pre.innerHTML = asciiContent;
+          
+          // Show immediately now that the character width issue is fixed
+          if (!this.hasValidContent) {
+            this.hasValidContent = true;
+            this.domElement.style.opacity = '1';
+          }
+        }
+      }
+    } catch (error) {
+      // Silently handle any drawing errors
+      return;
+    }
+    
+    if (this.hasValidContent) {
+      this.hue();
+    }
   }
 
   onMouseMove(e: MouseEvent) {
@@ -173,14 +256,27 @@ class AsciiFilter {
     this.domElement.style.filter = `hue-rotate(${this.deg.toFixed(1)}deg)`;
   }
 
-  asciify(ctx: CanvasRenderingContext2D, w: number, h: number) {
-    if (w && h) {
-      const imgData = ctx.getImageData(0, 0, w, h).data;
+  asciify(ctx: CanvasRenderingContext2D, w: number, h: number): string | null {
+    if (!w || !h || w <= 0 || h <= 0) return null;
+    
+    try {
+      const imgData = ctx.getImageData(0, 0, w, h);
+      if (!imgData || !imgData.data) return null;
+      
+      const data = imgData.data;
       let str = '';
+      
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
-          const i = x * 4 + y * 4 * w;
-          const [r, g, b, a] = [imgData[i], imgData[i + 1], imgData[i + 2], imgData[i + 3]];
+          const i = (x + y * w) * 4;
+          
+          // Bounds check to prevent artifacts
+          if (i + 3 >= data.length) {
+            str += ' ';
+            continue;
+          }
+          
+          const [r, g, b, a] = [data[i], data[i + 1], data[i + 2], data[i + 3]];
 
           if (a === 0) {
             str += ' ';
@@ -194,7 +290,11 @@ class AsciiFilter {
         }
         str += '\n';
       }
-      this.pre.innerHTML = str;
+      return str;
+    } catch (error) {
+      // Silently handle any rendering errors to prevent artifacts
+      console.warn('ASCII rendering error:', error);
+      return null;
     }
   }
 
@@ -227,22 +327,31 @@ class CanvasTxt {
     this.context.font = this.font;
     const metrics = this.context.measureText(this.txt);
 
-    const textWidth = Math.ceil(metrics.width) + 20;
-    const textHeight = Math.ceil(metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent) + 20;
+    const textWidth = Math.ceil(metrics.width) + 40;
+    const textHeight = Math.ceil(metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent) + 40;
 
-    this.canvas.width = textWidth;
-    this.canvas.height = textHeight;
+    // Ensure dimensions are even numbers to prevent half-pixel rendering
+    this.canvas.width = Math.ceil(textWidth / 2) * 2;
+    this.canvas.height = Math.ceil(textHeight / 2) * 2;
   }
 
   render() {
+    // Clear with fully transparent background
     this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    // Enable better text rendering
+    this.context.textBaseline = 'top';
+    this.context.textAlign = 'left';
+    this.context.imageSmoothingEnabled = true;
+    this.context.imageSmoothingQuality = 'high';
+    
     this.context.fillStyle = this.color;
     this.context.font = this.font;
 
     const metrics = this.context.measureText(this.txt);
-    const yPos = 10 + metrics.actualBoundingBoxAscent;
+    const yPos = 20 + metrics.actualBoundingBoxAscent;
 
-    this.context.fillText(this.txt, 10, yPos);
+    this.context.fillText(this.txt, 20, yPos);
   }
 
   get width() {
@@ -320,18 +429,32 @@ class CanvAscii {
     this.textCanvas.render();
 
     this.texture = new THREE.CanvasTexture(this.textCanvas.texture);
-    this.texture.minFilter = THREE.NearestFilter;
+    this.texture.minFilter = THREE.LinearFilter;
+    this.texture.magFilter = THREE.LinearFilter;
+    this.texture.needsUpdate = true;
+    
+    // Prevent texture wrapping issues that can cause seams
+    this.texture.wrapS = THREE.ClampToEdgeWrapping;
+    this.texture.wrapT = THREE.ClampToEdgeWrapping;
+    this.texture.generateMipmaps = false;
+    
+    // Ensure texture is properly initialized
+    this.texture.anisotropy = 1;
 
     const textAspect = this.textCanvas.width / this.textCanvas.height;
     const baseH = this.planeBaseHeight;
     const planeW = baseH * textAspect;
     const planeH = baseH;
 
-    this.geometry = new THREE.PlaneGeometry(planeW, planeH, 36, 36);
+    // Use a single quad (1x1 segments) - no geometry seams possible
+    this.geometry = new THREE.PlaneGeometry(planeW, planeH, 1, 1);
     this.material = new THREE.ShaderMaterial({
       vertexShader,
       fragmentShader,
       transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      depthTest: false,
       uniforms: {
         uTime: { value: 0 },
         mouse: { value: 1.0 },
@@ -345,9 +468,16 @@ class CanvAscii {
   }
 
   setRenderer() {
-    this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+    this.renderer = new THREE.WebGLRenderer({ 
+      antialias: false, 
+      alpha: true,
+      preserveDrawingBuffer: false
+    });
     this.renderer.setPixelRatio(1);
     this.renderer.setClearColor(0x000000, 0);
+    
+    // Clear the renderer completely
+    this.renderer.clear(true, true, true);
 
     this.filter = new AsciiFilter(this.renderer, {
       fontFamily: 'IBM Plex Mono',
@@ -375,15 +505,7 @@ class CanvAscii {
   }
 
   load() {
-    this.animate();
-  }
-
-  onMouseMove(evt: MouseEvent | TouchEvent) {
-    const e = 'touches' in evt ? evt.touches[0] : evt;
-    const bounds = this.container.getBoundingClientRect();
-    const x = e.clientX - bounds.left;
-    const y = e.clientY - bounds.top;
-    this.mouse = { x, y };
+    // Don't start animation automatically - let the parent control it
   }
 
   animate() {
@@ -394,16 +516,29 @@ class CanvAscii {
     animateFrame();
   }
 
+  onMouseMove(evt: MouseEvent | TouchEvent) {
+    const e = 'touches' in evt ? evt.touches[0] : evt;
+    const bounds = this.container.getBoundingClientRect();
+    const x = e.clientX - bounds.left;
+    const y = e.clientY - bounds.top;
+    this.mouse = { x, y };
+  }
+
   render() {
     const time = new Date().getTime() * 0.001;
 
     this.textCanvas.render();
     this.texture.needsUpdate = true;
 
-    this.mesh.material.uniforms.uTime.value = Math.sin(time);
+    // Start with a more gradual animation
+    this.mesh.material.uniforms.uTime.value = Math.sin(time * 0.5);
 
     this.updateRotation();
-    this.filter.render(this.scene, this.camera);
+    
+    // Only render if everything is properly initialized
+    if (this.renderer && this.scene && this.camera && this.filter) {
+      this.filter.render(this.scene, this.camera);
+    }
   }
 
   updateRotation() {
@@ -450,6 +585,7 @@ interface ASCIITextProps {
   textColor?: string;
   planeBaseHeight?: number;
   enableWaves?: boolean;
+  onReady?: () => void;
 }
 
 export default function ASCIIText({
@@ -458,30 +594,54 @@ export default function ASCIIText({
   textFontSize = 200,
   textColor = '#fdf9f3',
   planeBaseHeight = 8,
-  enableWaves = true
+  enableWaves = true,
+  onReady
 }: ASCIITextProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const asciiRef = useRef<CanvAscii | null>(null);
+  const [isReady, setIsReady] = useState(false);
+  const readyCalledRef = useRef(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
     const { width, height } = containerRef.current.getBoundingClientRect();
 
+    const initializeAscii = (w: number, h: number) => {
+      // Ensure container is ready and has proper dimensions
+      if (!containerRef.current || w <= 0 || h <= 0) return;
+      
+      asciiRef.current = new CanvAscii(
+        { text, asciiFontSize, textFontSize, textColor, planeBaseHeight, enableWaves },
+        containerRef.current,
+        w,
+        h
+      );
+      
+      // Pass the ready callback to the filter
+      if (asciiRef.current.filter && onReady && !readyCalledRef.current) {
+        asciiRef.current.filter.onReadyCallback = () => {
+          if (!readyCalledRef.current) {
+            readyCalledRef.current = true;
+            onReady();
+          }
+        };
+      }
+      
+      // The ASCII filter will handle its own visibility now
+      asciiRef.current.load();
+      asciiRef.current.animate();
+      
+      // Set ready immediately - the filter controls when it shows
+      setIsReady(true);
+    };
+
     if (width === 0 || height === 0) {
       const observer = new IntersectionObserver(
         ([entry]) => {
           if (entry.isIntersecting && entry.boundingClientRect.width > 0 && entry.boundingClientRect.height > 0) {
             const { width: w, height: h } = entry.boundingClientRect;
-
-            asciiRef.current = new CanvAscii(
-              { text, asciiFontSize, textFontSize, textColor, planeBaseHeight, enableWaves },
-              containerRef.current!,
-              w,
-              h
-            );
-            asciiRef.current.load();
-
+            initializeAscii(w, h);
             observer.disconnect();
           }
         },
@@ -498,13 +658,7 @@ export default function ASCIIText({
       };
     }
 
-    asciiRef.current = new CanvAscii(
-      { text, asciiFontSize, textFontSize, textColor, planeBaseHeight, enableWaves },
-      containerRef.current,
-      width,
-      height
-    );
-    asciiRef.current.load();
+    initializeAscii(width, height);
 
     const ro = new ResizeObserver(entries => {
       if (!entries[0] || !asciiRef.current) return;

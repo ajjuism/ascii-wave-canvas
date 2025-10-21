@@ -97,3 +97,40 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  /* Custom scrollbar styles */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  
+  .scrollbar-track-transparent {
+    scrollbar-color: transparent transparent;
+  }
+  
+  .scrollbar-thumb-foreground\/20 {
+    scrollbar-color: hsl(var(--foreground) / 0.2) transparent;
+  }
+  
+  .hover\:scrollbar-thumb-foreground\/30:hover {
+    scrollbar-color: hsl(var(--foreground) / 0.3) transparent;
+  }
+  
+  /* Webkit scrollbar styles for better cross-browser support */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .scrollbar-track-transparent::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-thumb-foreground\/20::-webkit-scrollbar-thumb {
+    background: hsl(var(--foreground) / 0.2);
+    border-radius: 3px;
+  }
+  
+  .scrollbar-thumb-foreground\/20::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--foreground) / 0.3);
+  }
+}
